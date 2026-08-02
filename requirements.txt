@@ -1,0 +1,11 @@
+torch==2.9.0
+torchvision==0.24.0
+transformers==4.57.1
+
+numpy==1.26.4
+Pillow>=9.4.0
+pandas
+scikit-learn
+tqdm
+ensemble-boxes
+opencv-python-headless
