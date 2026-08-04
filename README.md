@@ -1,5 +1,9 @@
 # LoFi-MedG
 
+[![arXiv](https://img.shields.io/badge/arXiv-2608.00976-b31b1b.svg)](https://arxiv.org/abs/2608.00976)
+[![Hugging Face](https://img.shields.io/badge/🤗%20Hugging%20Face-LoFi--MedG-yellow)](https://huggingface.co/myeongkyunkang/lofi-medg)
+[![Hugging Face](https://img.shields.io/badge/🤗%20Hugging%20Face-SigLIP2--LoFi--MedG-yellow)](https://huggingface.co/myeongkyunkang/siglip2-so400m-patch16-512-lofi-medg)
+
 Location-Aware Fine-Grained Representation Learning for Medical Vision Foundation Models
 
 # Data
@@ -120,3 +124,16 @@ Download model checkpoints under `./models`.
     source lofi/bin/activate
     pip install --upgrade pip
     pip install -r requirements.txt
+
+# Citation
+
+If you find this work useful in your research, please cite
+
+```
+@article{kang2026location,
+  title={Location-Aware Fine-Grained Representation Learning for Medical Vision Foundation Models},
+  author={Kang, Myeongkyun and Yang, Yanting and Li, Xiaoxiao},
+  journal={arXiv preprint arXiv:2608.00976},
+  year={2026}
+}
+```
