@@ -4,14 +4,27 @@
 [![Hugging Face](https://img.shields.io/badge/🤗%20Hugging%20Face-LoFi--MedG-yellow)](https://huggingface.co/myeongkyunkang/lofi-medg)
 [![Hugging Face](https://img.shields.io/badge/🤗%20Hugging%20Face-SigLIP2--LoFi--MedG-yellow)](https://huggingface.co/myeongkyunkang/siglip2-so400m-patch16-512-lofi-medg)
 
-Location-Aware Fine-Grained Representation Learning for Medical Vision Foundation Models
+This is the official repository for "**Location-Aware Fine-Grained Representation Learning for Medical Vision Foundation Models**".
 
-# Data
+# 📖 Overview
+
+Fine-grained visual representations are essential for medical image analysis, particularly when diagnostically relevant evidence is subtle and spatially localized. Modern transformer-based medical vision encoders must therefore learn patch-level representations that are both clinically meaningful and spatially consistent. Without these properties, large vision-language models (LVLMs) operate on an ambiguous visual foundation, limiting their ability to generate clinically reliable and spatially grounded responses.
+
+However, existing training strategies for medical vision encoders rarely achieve both objectives. Image-text alignment provides clinically meaningful supervision primarily at the image level, leaving the spatial localization of diagnostic evidence weakly constrained. In contrast, self-supervised learning promotes spatial consistency but lacks the semantic supervision needed to distinguish visually similar yet clinically distinct regions.
+
+To address this gap, we present **LoFi**, a medical vision foundation model built on location-aware fine-grained representation learning. LoFi trains a vision encoder with a lightweight large language model under grounding and grounded captioning objectives. Because these objectives require predicting location from clinical text and vice versa, spatial consistency emerges without any explicit patch-level regularization. To enable training at scale, we construct **MedG**, a large-scale medical grounding dataset of 4.48M image-text-box triplets curated from 84 datasets spanning 7 modalities.
+
+<div align="center">
+  <img src="https://arxiv.org/html/2608.00976v1/figs/fig_method.jpg" alt="overview" width="800">
+  <p><em>Overview of the location-aware fine-grained representation learning framework. (a) The MedG dataset. (b) LoFi training on image-text-box triplets (I, T, B). (c) Fine-tuning of the vision encoder for perception-centric and semantics-centric tasks.</em></p>
+</div>
+
+# 📂 Data
 
 See [README_medg.md](README_medg.md) and [README_downstream.md](README_downstream.md) for
 instructions on dataset download and preprocessing.
 
-# Location-Aware Fine-Grained Representation Learning
+# 🚀 Location-Aware Fine-Grained Representation Learning
 
     # Training recipe
     python main.py \
@@ -55,7 +68,7 @@ We provide a model compatible with [
 <td><a href="https://huggingface.co/myeongkyunkang/siglip2-so400m-patch16-512-lofi-medg">download</a></td></tr>
 </tbody></table>
 
-# External Validation on Grounding
+# ✅ External Validation on Grounding
 
     # Evaluation on SegTHOR
     python main.py \
@@ -68,7 +81,7 @@ We provide a model compatible with [
         --resume ./models/lofi-medg/last.pt \
         --result_dir ./results_ext/
 
-# Downstream Fine-Tuning
+# 🛠️ Downstream Fine-Tuning
 
     # DATASET: padchest, tn5000, segthor, slake, vqarad, omnimedvqa
 
@@ -110,7 +123,7 @@ We provide a model compatible with [
         --resume <RESULT_DIR>/ep<EPOCH>.pt \
         --result_dir <RESULT_DIR>
 
-# Models
+# 📦 Models
 
 Download model checkpoints under `./models/`.
 
@@ -118,14 +131,14 @@ Download model checkpoints under `./models/`.
     git clone https://huggingface.co/google/siglip2-so400m-patch16-512
     git clone https://huggingface.co/google/gemma-3-270m-it
 
-# Requirements
+# ⚙️ Requirements
 
     python -m venv lofi
     source lofi/bin/activate
     pip install --upgrade pip
     pip install -r requirements.txt
 
-# Citation
+# 📝 Citation
 
 If you find this work useful in your research, please cite
 

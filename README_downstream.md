@@ -1,6 +1,6 @@
 # Downstream Data
 
-# Prepare Datasets
+# 🌐 Prepare Datasets
 
 Download the datasets under `./data/`.
 
@@ -25,7 +25,7 @@ Download the datasets under `./data/`.
     # OmniMedVQA
     https://huggingface.co/datasets/foreverbeliever/OmniMedVQA
 
-# Required Source Files
+# 🧾 Required Source Files
     
     ./data/SLAKE/
     ./data/VQA_RAD/
@@ -37,14 +37,14 @@ Download the datasets under `./data/`.
     ./data/padchest/master_table.csv
     ./data/padchest/ori_size.csv
 
-# Expected Preprocessing Inputs
+# 🗂️ Expected Preprocessing Inputs
 
     ./data/BIMCV-Padchest-GR/Padchest_GR_files/
     ./data/TN5000/
     ./data/SegTHOR/train/
     ./data/OmniMedVQA/
 
-# Preprocessing
+# ⚙️ Preprocessing
 
 Run preprocessing scripts from `tools/`.
 
@@ -58,7 +58,7 @@ Run preprocessing scripts from `tools/`.
         --save_dir ../data/padchest_512p/
     python save_ori_size.py padchest
 
-# Preprocessed Files
+# 📦 Preprocessed Files
 
     ./data/padchest_512p/
     ./data/tn5000_512p/

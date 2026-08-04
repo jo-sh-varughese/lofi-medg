@@ -1,6 +1,6 @@
 # MedG Data
 
-# Prepare Datasets
+# 🌐 Prepare Datasets
 
 Download the datasets under `./data/`.
 
@@ -48,14 +48,14 @@ for d in filter(Path.is_dir, root.iterdir()):
     # MIMIC-Ext-CXR-QBA
     wget -r -N -c -np --user <USER> --ask-password https://physionet.org/files/mimic-ext-cxr-qba/1.0.0/
 
-# Required Source Files
+# 🧾 Required Source Files
 
     # LLaVA-Rad
     ./data/llava-rad-mimic-cxr-annotations-1.0.0/chat_train_MIMIC_CXR_all_gpt4extract_rulebased_v1.json
     ./data/llava-rad-mimic-cxr-annotations-1.0.0/chat_dev_MIMIC_CXR_all_gpt4extract_rulebased_v1.json
     ./data/llava-rad-mimic-cxr-annotations-1.0.0/chat_test_MIMIC_CXR_all_gpt4extract_rulebased_v1.json
 
-# Expected Preprocessing Inputs
+# 🗂️ Expected Preprocessing Inputs
 
     # IMed-361M
     ./data/IMed-361M/
@@ -73,7 +73,7 @@ for d in filter(Path.is_dir, root.iterdir()):
     # MIMIC-Ext-CXR-QBA
     ./data/mimic-ext-cxr-qba/1.0.0/exports/A_frontal/qa/
 
-# Preprocessing
+# ⚙️ Preprocessing
 
 Run preprocessing scripts from `tools/`.
 
@@ -136,7 +136,7 @@ Preprocess MIMIC-Ext-CXR-QBA annotations:
 
     python preprocess_mimic_ext.py --out_path ../data/mimic/mimic_ext.csv
 
-# Preprocessed Files
+# 📦 Preprocessed Files
 
     ./data/MedG_512p/
     ./data/mimic_512p_good/
