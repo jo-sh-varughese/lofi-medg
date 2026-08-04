@@ -112,9 +112,9 @@ We provide a model compatible with [
 
 # Models
 
-Download model checkpoints under `./models`.
+Download model checkpoints under `./models/`.
 
-    cd ./models
+    cd ./models/
     git clone https://huggingface.co/google/siglip2-so400m-patch16-512
     git clone https://huggingface.co/google/gemma-3-270m-it
 
