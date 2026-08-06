@@ -81,6 +81,11 @@ We provide a model compatible with [
         --resume ./models/lofi-medg/last.pt \
         --result_dir ./results_ext/
 
+    # Grounding demo on a single image
+    python grounding_demo.py \
+        --model_dir ./models/ \
+        --resume ./models/lofi-medg/last.pt
+
 # 🛠️ Downstream Fine-Tuning
 
     # DATASET: padchest, tn5000, segthor, slake, vqarad, omnimedvqa

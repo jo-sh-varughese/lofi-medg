@@ -125,7 +125,7 @@ def evaluate_text_generation(model, data_loader, decoder, projection, device, dt
                 multimodal_tokens = projection(last)
 
                 output_token = torch.tensor(input_token, device=device).unsqueeze(0)  # batchify
-                for step_index in range(decoder_max_length):
+                for _ in range(decoder_max_length):
                     out = decoder(output_token, multimodal=multimodal_tokens)[:, -1]
                     next_token = torch.argmax(out, dim=-1, keepdim=True)
                     if torch.all(next_token == end_token):
