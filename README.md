@@ -1,5 +1,6 @@
 # LoFi-MedG
 
+[![Project Page](https://img.shields.io/badge/🌐-Project%20Page-blue)](https://myeongkyunkang.github.io/lofi-medg-page/)
 [![arXiv](https://img.shields.io/badge/arXiv-2608.00976-b31b1b.svg)](https://arxiv.org/abs/2608.00976)
 [![Hugging Face](https://img.shields.io/badge/🤗%20Hugging%20Face-LoFi--MedG-yellow)](https://huggingface.co/myeongkyunkang/lofi-medg)
 [![Hugging Face](https://img.shields.io/badge/🤗%20Hugging%20Face-SigLIP2--LoFi--MedG-yellow)](https://huggingface.co/myeongkyunkang/siglip2-so400m-patch16-512-lofi-medg)
@@ -16,7 +17,7 @@ To address this gap, we present **LoFi**, a medical vision foundation model buil
 
 <div align="center">
   <img src="https://arxiv.org/html/2608.00976v1/figs/fig_method.jpg" alt="overview" width="800">
-  <p><em>Overview of the location-aware fine-grained representation learning framework. (a) The MedG dataset. (b) LoFi training on image-text-box triplets (I, T, B). (c) Fine-tuning of the vision encoder for perception-centric and semantics-centric tasks.</em></p>
+  <p><em>Overview of the location-aware fine-grained representation learning framework. (a) The MedG dataset. (b) LoFi training on image-text-box triplets. (c) Fine-tuning of the vision encoder for perception-centric and semantics-centric tasks.</em></p>
 </div>
 
 # 📂 Data
