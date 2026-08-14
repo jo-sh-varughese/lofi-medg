@@ -1,0 +1,28 @@
+# Datasets and slides must never be committed. Only public datasets belong here;
+# anything with different governance or sharing constraints belongs in a
+# separate private repository -- see README_her2.md, Section 3.
+data/*
+!data/mimic/
+!data/padchest/
+!data/vqarad/
+data/mimic/*
+data/padchest/*
+data/vqarad/*
+!data/*/.gitkeep
+
+# Models, checkpoints, run outputs
+models/
+results*/
+*.pt
+*.pkl
+
+# Generated previews
+her2_samples.png
+pred.jpg
+train_curve.png
+
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/

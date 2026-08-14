@@ -138,6 +138,39 @@ class TN5000Dataset(BaseDataset):
                 self.qas.append((pair['label'], boxes))
 
 
+class HER2Dataset(BaseDataset):
+    def __init__(self, split, processor, decoder_tokenizer, multimodal_tokens, decoder_max_length, args, type='default'):
+        self.name = 'her2'
+        BaseDataset.__init__(self, split, processor, decoder_tokenizer, multimodal_tokens, decoder_max_length, type)
+
+        target_annotated_size = get_target_annotated_size(args.her2_dir)
+        json_name = {'train': 'train.json', 'val': 'val.json', 'test': 'test.json'}[self.split]
+
+        with open(os.path.join(args.her2_dir, json_name), 'r', encoding='utf-8') as f:
+            json_data = json.load(f)
+
+        # per-sample provenance, so detection results can be split by supervision
+        # strength (real polygons vs. templated IHC regions); see tools/her2_eval_breakdown.py
+        content_type_dict = {}
+        meta_path = os.path.join(args.her2_dir, 'her2_meta.csv')
+        if os.path.isfile(meta_path):
+            for _, row in list(pd.read_csv(meta_path).iterrows()):
+                content_type_dict[row['image']] = row['content_type']
+
+        data = json_data.get('data', {})
+        self.imgs, self.qas = [], []
+        self.metas = []
+        for rel_path, pairs in data.items():
+            image_path = os.path.join(args.her2_dir, rel_path)
+
+            for pair in pairs:
+                boxes = sorted(pair['box'], key=lambda box: box[0])
+                boxes = str([[int((v / target_annotated_size) * 1000) for v in box] for box in boxes]).replace(' ', '')
+                self.imgs.append(image_path)
+                self.qas.append((pair['label'], boxes))
+                self.metas.append({'image_path': image_path, 'content_type': content_type_dict.get(rel_path, '')})
+
+
 class SegTHORDataset(BaseDataset):
     def __init__(self, split, processor, decoder_tokenizer, multimodal_tokens, decoder_max_length, args, type='default'):
         self.name = 'segthor'

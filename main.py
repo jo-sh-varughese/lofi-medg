@@ -9,7 +9,7 @@ import torch
 from torch.optim.lr_scheduler import CosineAnnealingLR
 from torch.utils.data import ConcatDataset, DataLoader
 
-from lofi_utils.dataset.det import MedGDataset, MIMICDataset, PadChestDataset, TN5000Dataset, SegTHORDataset
+from lofi_utils.dataset.det import MedGDataset, MIMICDataset, PadChestDataset, TN5000Dataset, SegTHORDataset, HER2Dataset
 from lofi_utils.dataset.vqa import SLAKEDataset, VQARADDataset, OmniMedVQADataset
 from lofi_utils.gemma import Gemma3Model, GemmaTokenizer
 from lofi_utils.misc import set_seed, seed_worker
@@ -22,6 +22,7 @@ DATASET_MAP = {
     'padchest': PadChestDataset,
     'tn5000': TN5000Dataset,
     'segthor': SegTHORDataset,
+    'her2': HER2Dataset,
     'slake': SLAKEDataset,
     'vqarad': VQARADDataset,
     'omnimedvqa': OmniMedVQADataset,
@@ -236,6 +237,7 @@ if __name__ == '__main__':
     parser.add_argument('--padchest_ori_size_path', type=str)
     parser.add_argument('--tn5000_dir', type=str)
     parser.add_argument('--segthor_dir', type=str)
+    parser.add_argument('--her2_dir', type=str)
 
     # vqa dataset
     parser.add_argument('--slake_dir', type=str)
@@ -296,6 +298,7 @@ if __name__ == '__main__':
         padchest_ori_size_path='data/padchest/ori_size.csv',
         tn5000_dir='./data/tn5000_512p/',
         segthor_dir='./data/segthor_512p/',
+        her2_dir='./data/her2_512p/',
         # vqa dataset
         slake_dir='./data/SLAKE/',
         vqarad_dir='./data/VQA_RAD/',

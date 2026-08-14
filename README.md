@@ -25,6 +25,11 @@ To address this gap, we present **LoFi**, a medical vision foundation model buil
 See [README_medg.md](README_medg.md) and [README_downstream.md](README_downstream.md) for
 instructions on dataset download and preprocessing.
 
+**Community extension:** [README_her2.md](README_her2.md) adds a `her2` breast
+HER2 pathology dataset built from public sources (BCI, CAMELYON16/17), with an
+explicit account of which annotations are real and which are templated weak
+supervision.
+
 # 🚀 Location-Aware Fine-Grained Representation Learning
 
     # Training recipe

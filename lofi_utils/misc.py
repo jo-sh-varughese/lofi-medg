@@ -3,10 +3,11 @@ import random
 import re
 
 import numpy as np
-import torch
 
 
 def set_seed(seed):
+    import torch
+
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
@@ -25,6 +26,8 @@ def set_seed(seed):
 
 
 def seed_worker(*args, **kwargs):
+    import torch
+
     worker_seed = torch.initial_seed() % (2 ** 32)
     np.random.seed(worker_seed)
     random.seed(worker_seed)

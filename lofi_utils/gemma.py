@@ -517,8 +517,22 @@ def apply_chat_template(user_text, model_text=None):
     )
 
 
-def pad_or_truncate(input_ids, max_length, pad_token_id=0):
+_truncation_warned = set()
+
+
+def pad_or_truncate(input_ids, max_length, pad_token_id=0, warn=True):
     if len(input_ids) > max_length:
+        # Truncation drops the END of the target, which is where the closing ```
+        # fence and <end_of_turn> live. A sample that is cut here trains the
+        # decoder on a sequence that never terminates, so warn instead of doing
+        # it silently. Warn once per (max_length) to avoid per-sample spam.
+        if warn and max_length not in _truncation_warned:
+            _truncation_warned.add(max_length)
+            print(f'WARNING: target of {len(input_ids)} tokens truncated to decoder_max_length '
+                  f'{max_length}; the closing fence and <end_of_turn> are lost and the decoder '
+                  f'will be trained on a non-terminating target. Raise --decoder_max_length '
+                  f'(note main.py adds --multimodal_tokens to it) or reduce boxes per sample. '
+                  f'Further truncations at this length are not reported.')
         input_ids = input_ids[:max_length]  # truncate
     else:
         input_ids = input_ids + [pad_token_id] * (max_length - len(input_ids))  # pad

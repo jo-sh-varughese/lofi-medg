@@ -1,0 +1,22 @@
+# Additional requirements for the HER2 pathology extension.
+# Install on top of requirements.txt.
+
+# Whole-slide reading (CAMELYON track only). Needs the OpenSlide C library:
+#   Linux  : apt-get install openslide-tools
+#   macOS  : brew install openslide
+#   Windows: download the OpenSlide binaries and put bin/ on PATH
+openslide-python
+
+# Training curves (tools/plot_her2_training.py)
+matplotlib
+
+# Test suite
+pytest
+
+# Decoder token-budget check (tools/check_her2_token_budget.py).
+# Already a transitive dependency of transformers.
+tokenizers
+
+# NOTE: the IHC track (tools/preprocess_bci.py), the manifest validator and the
+# whole test suite need none of the above beyond pytest -- they run on the base
+# requirements alone, and without torch.
