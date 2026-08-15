@@ -1,3 +1,4 @@
+import gc
 import os
 
 import math
@@ -107,6 +108,26 @@ def apply_lora(model, r, lora_alpha, target_modules, head_name, debug=False):
         print(f'Trainable params: {trainable:,} | Total params: {total:,} | Trainable %: {100 * trainable / total:.4f}')
 
     return model
+
+
+def load_checkpoint(ckpt_path):
+    '''
+    Load a checkpoint without materialising a second full copy of the weights.
+
+    torch.load normally reads every tensor into RAM, so `model` plus `ckpt` both
+    resident peaks at roughly twice the model size -- about 9 GB for
+    siglip2-so400m in fp32, which the OOM killer ends on a 12.7 GB Colab
+    runtime (exit -9). mmap=True keeps tensors backed by the file until each one
+    is copied into place.
+
+    Falls back to a plain load for checkpoints written before torch's zipfile
+    serialisation, which mmap requires.
+    '''
+    try:
+        return torch.load(ckpt_path, map_location='cpu', weights_only=False, mmap=True)
+    except (RuntimeError, TypeError, ValueError) as exc:
+        print(f'mmap load unavailable ({exc}); falling back to a full read')
+        return torch.load(ckpt_path, map_location='cpu', weights_only=False)
 
 
 def build_model(model_name, model_dir):

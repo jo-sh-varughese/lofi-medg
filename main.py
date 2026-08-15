@@ -1,4 +1,5 @@
 import argparse
+import gc
 import json
 import os
 import random
@@ -15,7 +16,7 @@ from lofi_utils.dataset.vqa import SLAKEDataset, VQARADDataset, OmniMedVQADatase
 from lofi_utils.feature_cache import build_manifest, FeatureCache, read_manifest
 from lofi_utils.gemma import Gemma3Model, GemmaTokenizer
 from lofi_utils.misc import set_seed, seed_worker
-from lofi_utils.model import apply_lora, build_model, ProjectionWrapper
+from lofi_utils.model import apply_lora, build_model, load_checkpoint, ProjectionWrapper
 from lofi_utils.train_eval import train, evaluate_text_generation, save_vqa_eval, save_detection_eval
 
 DATASET_MAP = {
@@ -203,12 +204,17 @@ def main(args):
     # resume
     if os.path.isfile(args.resume):
         print('Resuming from checkpoint...')
-        ckpt = torch.load(args.resume, map_location='cpu', weights_only=False)
+        ckpt = load_checkpoint(args.resume)
         model.load_state_dict(ckpt['state_dict'])
         projection.load_state_dict(ckpt['projection'])
         if args.finetune_decoder:
             print('Resuming decoder from checkpoint...')
             decoder.load_state_dict(ckpt['decoder'])
+        # Free the checkpoint before the models move to the device. Holding it
+        # alongside them doubles peak RAM and is what the OOM killer ends on a
+        # 12.7 GB runtime.
+        del ckpt
+        gc.collect()
 
     # set device
     if args.feature_cache_dir:

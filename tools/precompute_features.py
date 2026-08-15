@@ -29,6 +29,7 @@ Safe to interrupt and rerun: already-cached images are skipped.
 '''
 
 import argparse
+import gc
 import os
 import sys
 from types import SimpleNamespace
@@ -43,7 +44,7 @@ from lofi_utils.feature_cache import (
     build_manifest, check_manifest, estimate_cache_bytes, read_manifest,
     save_feature, unique_images, write_manifest, cache_file_path,
 )
-from lofi_utils.model import apply_lora, build_model, pool2x2 as pool2x2_fn
+from lofi_utils.model import apply_lora, build_model, load_checkpoint, pool2x2 as pool2x2_fn
 
 
 def build_encoder(args):
@@ -66,13 +67,26 @@ def build_encoder(args):
 
     if os.path.isfile(args.resume):
         print(f'Loading encoder weights from {args.resume}')
-        ckpt = torch.load(args.resume, map_location='cpu', weights_only=False)
+        ckpt = load_checkpoint(args.resume)
         model.load_state_dict(ckpt['state_dict'])
+        # release the checkpoint before anything else allocates; holding it
+        # alongside the model is what gets this OOM-killed on a free runtime
+        del ckpt
+        gc.collect()
     else:
         # Caching the *base* encoder is legitimate (it matches a run with no
         # --resume), but it is almost never what is wanted, so say so.
         print(f'WARNING: --resume {args.resume!r} is not a file; caching features from the '
               f'base checkpoint. These will NOT match a fine-tuning run that resumes a checkpoint.')
+
+    # Only the vision tower is used here (encode_vision calls model.vision_model).
+    # The text tower is a few hundred million parameters of dead weight on a
+    # memory-constrained runtime. Dropping it after the state dict is loaded
+    # changes nothing numerically.
+    if hasattr(model, 'text_model'):
+        del model.text_model
+        gc.collect()
+        print('Released the unused text tower.')
 
     return model, processor, image_size
 
