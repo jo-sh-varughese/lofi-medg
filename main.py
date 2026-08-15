@@ -1,6 +1,7 @@
 import argparse
 import json
 import os
+import random
 import re
 import shutil
 from types import SimpleNamespace
@@ -72,6 +73,51 @@ def attach_feature_cache(dataset, args, image_size):
     dataset.feature_cache = cache
     print(f'Using precomputed features from {args.feature_cache_dir} '
           f'(shape {found.get("feature_shape")}, dtype {found.get("dtype")}) -- encoder will not run.')
+    return dataset
+
+
+def shuffle_images(dataset, seed):
+    '''
+    Break the image-target correspondence, for the shuffled-image control that
+    RESULTS_her2.md section 6 makes a gate on every other number.
+
+    Each sample keeps its question and target boxes but is paired with a
+    DIFFERENT image. A model genuinely grounding in the image should collapse;
+    one that has memorised a text prior over the seven caption templates will
+    score about the same as the real evaluation, which is the failure this
+    control exists to catch.
+
+    Deterministic given the seed, and derangement-corrected so no sample
+    accidentally keeps its own image (which would weaken the control).
+    '''
+    order = list(range(len(dataset.imgs)))
+    random.Random(seed).shuffle(order)
+
+    # remove fixed points; with n == 1 no derangement exists, so refuse
+    if len(order) < 2:
+        raise ValueError('--shuffle_images needs at least 2 samples to break the pairing')
+    for _ in range(len(order)):
+        fixed_points = [i for i, j in enumerate(order) if i == j]
+        if not fixed_points:
+            break
+        for i in fixed_points:
+            j = (i + 1) % len(order)
+            order[i], order[j] = order[j], order[i]
+
+    remaining = sum(1 for i, j in enumerate(order) if i == j)
+    if remaining:
+        raise RuntimeError(f'could not fully break the pairing: {remaining} samples kept their own image')
+
+    dataset.imgs = [dataset.imgs[i] for i in order]
+    if getattr(dataset, 'metas', None) is not None:
+        # keep the recorded path honest; content_type belongs to the target and
+        # is deliberately left alone, so the per-track breakdown still splits
+        # the control the same way as the real run
+        for i, meta in enumerate(dataset.metas):
+            meta['image_path'] = dataset.imgs[i]
+
+    print(f'--shuffle_images: image/target pairing broken with seed {seed}, '
+          f'no sample kept its own image. CONTROL RUN -- not a result.')
     return dataset
 
 
@@ -204,11 +250,15 @@ def main(args):
                 type='qa',
             )
             test_dataset = limit_samples(test_dataset, args.limit_samples)
+            if args.shuffle_images:
+                test_dataset = shuffle_images(test_dataset, args.seed if args.seed is not None else 0)
             test_dataset = attach_feature_cache(test_dataset, args, args.image_size)
             test_loader = DataLoader(test_dataset, batch_size=args.batch_size, shuffle=False, num_workers=args.num_workers)
             targets, predictions = evaluate_text_generation(model, test_loader, decoder, projection, device, dtype, args)
 
-            csv_path = os.path.join(args.result_dir, f'eval_{evaluate}_{args.dataset}_ground_{name}.csv')
+            # the control uses the same checkpoint, so it must not overwrite the real evaluation
+            control_suffix = '_shuffled' if args.shuffle_images else ''
+            csv_path = os.path.join(args.result_dir, f'eval_{evaluate}_{args.dataset}_ground_{name}{control_suffix}.csv')
 
             if args.dataset in ['slake', 'vqarad', 'omnimedvqa']:
                 save_vqa_eval(csv_path, test_dataset, targets, predictions)
@@ -335,6 +385,9 @@ if __name__ == '__main__':
                         help='load precomputed frozen-encoder features instead of images; requires --fix_enc')
     parser.add_argument('--limit_samples', type=int, default=0,
                         help='truncate each split to N samples; for smoke tests only, never for a reported result')
+    parser.add_argument('--shuffle_images', action='store_true',
+                        help='evaluation control: pair each target with a different image. If this scores '
+                             'close to the real evaluation, the model is not using the image')
 
     # model
     parser.add_argument('--model_dir', type=str)

@@ -20,7 +20,9 @@ metadata.
 | HEROHE / TCGA-BRCA slide-label export | Complete, **not yet run against real clinical files** |
 | Decoder token-budget analysis | Complete — measured against the real gemma-3-270m-it tokenizer |
 | Frozen-encoder feature cache + laptop smoke test | Code complete and unit-tested, **never executed against real checkpoints** — see `README_her2.md` §7b |
-| Test suite | 74 tests passing, no torch / GPU / downloaded data required |
+| Shuffled-image control (`--shuffle_images`) | Implemented and unit-tested. It was prescribed in §6 below but had no implementation until now |
+| Colab notebook running the IHC track end to end | `notebooks/her2_colab_arm_a.ipynb`, **never executed** |
+| Test suite | 87 tests passing, no torch / GPU / downloaded data required |
 | Fine-tuning run | **Not run** — see §2 |
 | Evaluation | **Not run** — see §2 |
 

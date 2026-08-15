@@ -392,6 +392,14 @@ python main.py --evaluate test --dataset her2 \
     --her2_dir ./data/her2_512p/ --model_dir ./models/ \
     --seed 42 --resume ./models/lofi-medg/last.pt --result_dir ./results_baseline/
 
+# THE GATE: same checkpoint, same split, every target paired with a DIFFERENT
+# image. If this scores close to the real evaluation the model is not using the
+# image and every other number here is void. Writes to *_shuffled.csv, so it
+# cannot overwrite the real evaluation it is meant to be compared against.
+python main.py --evaluate test --shuffle_images --dataset her2 \
+    --her2_dir ./data/her2_512p/ --model_dir ./models/ \
+    --seed 42 --resume <RESULT_DIR>/ep<EPOCH>.pt --result_dir <RESULT_DIR>
+
 # Split the pooled metric by supervision strength -- the pooled number alone
 # mixes pathologist polygons with threshold-derived boxes
 python tools/her2_eval_breakdown.py --pkl_path <RESULT_DIR>/eval_test_her2_ground_ep<EPOCH>.pkl
@@ -423,7 +431,7 @@ Three controls belong in any honest write-up:
 ## 9. Tests
 
 ```bash
-python -m pytest tests -q      # 74 tests, no torch, no GPU, no downloaded data
+python -m pytest tests -q      # 87 tests, no torch, no GPU, no downloaded data
 ```
 
 Coverage: colour deconvolution separates DAB from haematoxylin and tracks grade;
@@ -446,6 +454,12 @@ round-tripping, no temporary files surviving an interrupted write, and a missing
 entry raising instead of silently recomputing. The encoder pass itself is not
 covered — it needs the real checkpoints.
 
+The shuffled-image control is covered for the property that makes it a valid
+gate: that it is a true derangement (no sample keeps its own image, at every
+size), that it moves images without touching questions, boxes or `content_type`,
+that it is deterministic per seed, and that it writes to a distinct filename so
+it cannot overwrite the evaluation it is compared against.
+
 Two tests read `det.py` and `main.py` as source text and assert the HER2 loader
 serialises boxes **identically** to SegTHOR and MedG. If anyone edits that
 convention, the suite fails rather than silently training against a mismatched
@@ -457,7 +471,7 @@ Kept minimal so this can be submitted as a PR:
 
 | File | Change |
 |---|---|
-| `main.py` | `'her2': HER2Dataset` in `DATASET_MAP`; `--her2_dir` argument and default; `--feature_cache_dir` / `--limit_samples` and the two helpers that apply them |
+| `main.py` | `'her2': HER2Dataset` in `DATASET_MAP`; `--her2_dir` argument and default; `--feature_cache_dir` / `--limit_samples` / `--shuffle_images` and the helpers that apply them; a `_shuffled` suffix on control result files |
 | `lofi_utils/dataset/det.py` | `HER2Dataset`, mirroring `SegTHORDataset` and adding per-sample `content_type` metas |
 | `lofi_utils/dataset/base.py` | image loading factored into `_load_image`, which serves cached features when one is attached. Default path is byte-for-byte the previous behaviour |
 | `lofi_utils/model.py` | `ProjectionWrapper.forward` takes `already_pooled=False`, so cached post-pool features are not pooled twice. Default is unchanged |
