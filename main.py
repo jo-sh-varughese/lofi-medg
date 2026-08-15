@@ -11,6 +11,7 @@ from torch.utils.data import ConcatDataset, DataLoader
 
 from lofi_utils.dataset.det import MedGDataset, MIMICDataset, PadChestDataset, TN5000Dataset, SegTHORDataset, HER2Dataset
 from lofi_utils.dataset.vqa import SLAKEDataset, VQARADDataset, OmniMedVQADataset
+from lofi_utils.feature_cache import build_manifest, FeatureCache, read_manifest
 from lofi_utils.gemma import Gemma3Model, GemmaTokenizer
 from lofi_utils.misc import set_seed, seed_worker
 from lofi_utils.model import apply_lora, build_model, ProjectionWrapper
@@ -27,6 +28,66 @@ DATASET_MAP = {
     'vqarad': VQARADDataset,
     'omnimedvqa': OmniMedVQADataset,
 }
+
+
+def attach_feature_cache(dataset, args, image_size):
+    '''
+    Point a dataset at precomputed frozen-encoder features instead of images.
+
+    Only valid when the encoder is frozen (--fix_enc): if any encoder parameter
+    trains, its output changes between epochs and cached features are stale
+    after the first step. That is a silent correctness failure, so it is a hard
+    error rather than a warning.
+    '''
+    if not args.feature_cache_dir:
+        return dataset
+
+    if not args.fix_enc:
+        raise ValueError(
+            '--feature_cache_dir requires --fix_enc. Without a frozen encoder the cached '
+            'features go stale after the first optimizer step and training would silently '
+            'be wrong.'
+        )
+
+    found = read_manifest(args.feature_cache_dir)
+    if found is None:
+        raise FileNotFoundError(
+            f'no feature cache in {args.feature_cache_dir}; build it first:\n'
+            f'  python tools/precompute_features.py --dataset {args.dataset} '
+            f'--feature_cache_dir {args.feature_cache_dir} ...'
+        )
+
+    expected = build_manifest(args.model_name, args.resume, image_size, args.pool2x2,
+                              found.get('dtype'), found.get('feature_shape', [0, 0]))
+    cache = FeatureCache(args.feature_cache_dir, expected_manifest=expected)
+
+    missing = cache.missing(dataset.imgs)
+    if missing:
+        raise KeyError(
+            f'{len(missing)} of this split\'s images are not in the cache '
+            f'(e.g. {missing[0]}). Rerun tools/precompute_features.py with --splits covering '
+            f'every split this run touches.'
+        )
+
+    dataset.feature_cache = cache
+    print(f'Using precomputed features from {args.feature_cache_dir} '
+          f'(shape {found.get("feature_shape")}, dtype {found.get("dtype")}) -- encoder will not run.')
+    return dataset
+
+
+def limit_samples(dataset, n):
+    '''
+    Truncate a dataset in place, for the laptop smoke test. Keeps imgs/qas/metas
+    aligned so per-sample provenance still matches.
+    '''
+    if n <= 0 or n >= len(dataset.imgs):
+        return dataset
+    dataset.imgs = dataset.imgs[:n]
+    dataset.qas = dataset.qas[:n]
+    if getattr(dataset, 'metas', None) is not None:
+        dataset.metas = dataset.metas[:n]
+    print(f'--limit_samples: using {len(dataset.imgs)} samples (SMOKE TEST -- not a result)')
+    return dataset
 
 
 def main(args):
@@ -104,7 +165,14 @@ def main(args):
             decoder.load_state_dict(ckpt['decoder'])
 
     # set device
-    model = model.to(device=device, dtype=dtype)
+    if args.feature_cache_dir:
+        # The encoder never runs in this mode, so keep its ~1.6 GB off the
+        # accelerator. It is still constructed and loaded, so checkpoint saving
+        # and --resume round-trip unchanged.
+        print('Feature cache in use: keeping the encoder on CPU (it will not be executed).')
+        model = model.to(device='cpu', dtype=torch.float32)
+    else:
+        model = model.to(device=device, dtype=dtype)
     decoder = decoder.to(device=device, dtype=dtype)
     projection = projection.to(device=device, dtype=dtype)
 
@@ -135,6 +203,8 @@ def main(args):
                 args=args,
                 type='qa',
             )
+            test_dataset = limit_samples(test_dataset, args.limit_samples)
+            test_dataset = attach_feature_cache(test_dataset, args, args.image_size)
             test_loader = DataLoader(test_dataset, batch_size=args.batch_size, shuffle=False, num_workers=args.num_workers)
             targets, predictions = evaluate_text_generation(model, test_loader, decoder, projection, device, dtype, args)
 
@@ -156,8 +226,13 @@ def main(args):
         decoder_max_length=args.decoder_max_length,
         args=args,
     )
+    train_dataset = limit_samples(train_dataset, args.limit_samples)
+    train_dataset = attach_feature_cache(train_dataset, args, args.image_size)
 
     if args.concat_dataset != '':
+        if args.feature_cache_dir:
+            raise ValueError('--feature_cache_dir does not cover --concat_dataset splits; '
+                             'cache those datasets too and extend this branch before using both.')
         concat_dataset_list = [train_dataset]
         if 'mimic' in args.concat_dataset:
             concat_dataset_list.extend([
@@ -254,6 +329,12 @@ if __name__ == '__main__':
     parser.add_argument('--weight_decay', type=float, default=1e-2)
     parser.add_argument('--clip_grad_norm', type=float, default=1.0)
     parser.add_argument('--num_workers', type=int, default=8)
+
+    # frozen-encoder feature cache (see tools/precompute_features.py)
+    parser.add_argument('--feature_cache_dir', type=str, default='',
+                        help='load precomputed frozen-encoder features instead of images; requires --fix_enc')
+    parser.add_argument('--limit_samples', type=int, default=0,
+                        help='truncate each split to N samples; for smoke tests only, never for a reported result')
 
     # model
     parser.add_argument('--model_dir', type=str)

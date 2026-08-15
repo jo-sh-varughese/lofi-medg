@@ -28,16 +28,24 @@ class BaseDataset(torch.utils.data.Dataset):
         print(f'Initializing {self.name} ({self.type}) dataset...')
         self.cxr_labels = None
 
+        # Set by main.py when --feature_cache_dir is given. When present the
+        # image is never opened: the frozen encoder's output was computed once
+        # by tools/precompute_features.py and is loaded from disk instead.
+        self.feature_cache = None
+
+    def _load_image(self, image_path):
+        if self.feature_cache is not None:
+            return torch.from_numpy(self.feature_cache.load(image_path).astype('float32'))
+        img = Image.open(image_path).convert('RGB')
+        return self.processor(images=[img], return_tensors='pt')['pixel_values'][0]
+
     def __len__(self):
         return len(self.imgs)
 
     def __getitem__(self, index):
         if self.type == 'qa':
-            img = self.imgs[index]
-            img = Image.open(img).convert('RGB')
             question, answer = self.qas[index]
-            img = self.processor(images=[img], return_tensors='pt')['pixel_values'][0]
-            return img, question, answer
+            return self._load_image(self.imgs[index]), question, answer
 
         # for MIMIC-CXR
         if self.cxr_labels is not None:
@@ -48,8 +56,7 @@ class BaseDataset(torch.utils.data.Dataset):
 
         img, (question, answer) = self.imgs[index], self.qas[index]
 
-        img = Image.open(img).convert('RGB')
-        img = self.processor(images=[img], return_tensors='pt')['pixel_values'][0]
+        img = self._load_image(img)
 
         if self.name in ['slake', 'vqarad', 'omnimedvqa']:
             instruction = question

@@ -15,7 +15,12 @@ from lofi_utils.gemma import apply_chat_template
 from lofi_utils.metrics import calc_detection_metrics, calc_exactmatch_accuracy
 
 
-def encode_vision(model, images):
+def encode_vision(model, images, cached=False):
+    # cached: `images` is not pixel values but the encoder output itself,
+    # precomputed by tools/precompute_features.py. Valid only with --fix_enc,
+    # where the encoder is deterministic across epochs.
+    if cached:
+        return images
     v = model.vision_model(pixel_values=images)
     return v.last_hidden_state
 
@@ -34,13 +39,14 @@ def train(model, loader, optimizer, decoder, projection, device, dtype, args):
         optimizer.zero_grad()
 
         # encode
-        last = encode_vision(model, images)
+        cached = bool(getattr(args, 'feature_cache_dir', ''))
+        last = encode_vision(model, images, cached=cached)
 
         tokens = tokens.to(device=device)
         attention_mask = attention_mask.to(device=device)
 
-        # projection
-        multimodal_tokens = projection(last)
+        # projection (cached features are stored post-pool2x2, so do not pool again)
+        multimodal_tokens = projection(last, already_pooled=cached)
         decoder_logits = decoder(tokens, multimodal=multimodal_tokens)
 
         # shift logits and labels for auto-regressive loss
@@ -119,10 +125,11 @@ def evaluate_text_generation(model, data_loader, decoder, projection, device, dt
                 begin_index = len(input_token)
 
                 # encode
-                last = encode_vision(model, image)
+                cached = bool(getattr(args, 'feature_cache_dir', ''))
+                last = encode_vision(model, image, cached=cached)
 
-                # projection
-                multimodal_tokens = projection(last)
+                # projection (cached features are stored post-pool2x2)
+                multimodal_tokens = projection(last, already_pooled=cached)
 
                 output_token = torch.tensor(input_token, device=device).unsqueeze(0)  # batchify
                 for _ in range(decoder_max_length):

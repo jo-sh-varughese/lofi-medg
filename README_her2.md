@@ -313,6 +313,72 @@ python tools/plot_her2_training.py \
     --result_dir ./results/her2_.../ --compare ./results/her2_other_.../
 ```
 
+### 7b. Running this without a dedicated GPU
+
+Two additions make the recipe reachable on a free Colab-class T4, or a laptop
+for a wiring check. Neither changes the objective, the optimiser, or the
+numbers the run produces.
+
+**Precomputed encoder features.** The recipe passes `--fix_enc`, which sets
+`requires_grad=False` on every encoder parameter (`main.py:185-187`), and the
+pipeline applies no image augmentation — `BaseDataset.__getitem__` opens the
+image and passes it straight to the processor, with no random crop, flip or
+jitter anywhere in `lofi_utils/`. So for a fixed checkpoint the encoder output
+for a given image is **identical on every epoch**, and the 30-epoch recipe
+recomputes it 30 times.
+
+`tools/precompute_features.py` computes it once:
+
+```bash
+python tools/precompute_features.py \
+    --dataset her2 --her2_dir ./data/her2_512p/ --splits train val test \
+    --model_dir ./models/ --model_name siglip2-so400m-patch16-512-lofi-medg \
+    --resume ./models/lofi-medg/last.pt \
+    --pool2x2 --feature_cache_dir ./cache/her2_features/ --batch_size 8
+
+# then add one flag to the training call
+python main.py ... --feature_cache_dir ./cache/her2_features/
+```
+
+This is exact, not an approximation. The cached tensor is precisely what
+`train_eval.encode_vision` returns. What it does **not** change: the projection
+head still trains (the cache sits upstream of it), and the 50/50
+grounding/captioning direction is still redrawn per epoch (`base.py:62`) because
+only the image side is cached.
+
+Storage is post-`pool2x2` — a parameter-free average pool, so caching after it
+is lossless for this recipe — giving 256×1152 per image, 590 KB in `float16`.
+`--cache_dtype float32` doubles that and stores exactly what a CPU run computes.
+
+Guards, because a stale cache is a silent correctness failure rather than a
+crash:
+
+- `--feature_cache_dir` without `--fix_enc` is a hard error. A training encoder
+  invalidates the cache after the first optimiser step.
+- A `manifest.json` records the encoder name, resumed-checkpoint fingerprint,
+  image size, pooling and dtype. A mismatch refuses to load.
+- A missing entry raises rather than falling back to running the encoder, so a
+  half-built cache cannot look like it worked while costing full price.
+- The encoder is kept on CPU when the cache is in use (it never executes),
+  freeing ~1.6 GB of accelerator memory.
+
+**Why this matters for the memory budget.** With `--fix_enc` the encoder holds
+no gradients, no optimiser state and no stored activations; trainable is decoder
+LoRA (`r=4`, on `W_query`/`W_value`) plus the projection head. Memory is not the
+binding constraint — wall-clock through the 400M-parameter encoder is, and that
+is what the cache removes.
+
+**Smoke test first.** `tools/smoke_test_her2.py` runs a handful of samples for
+one epoch on real files with the real checkpoints, to prove the wiring before
+spending scarce GPU time:
+
+```bash
+python tools/smoke_test_her2.py --her2_dir ./data/her2_512p/ --model_dir ./models/ --with_cache
+```
+
+It produces **no result**. `--limit_samples` exists for this and must never be
+used for a number that reaches `RESULTS_her2.md`.
+
 ## 8. Evaluation, and how it must be read
 
 ```bash
@@ -357,7 +423,7 @@ Three controls belong in any honest write-up:
 ## 9. Tests
 
 ```bash
-python -m pytest tests -q      # 53 tests, no torch, no GPU, no downloaded data
+python -m pytest tests -q      # 74 tests, no torch, no GPU, no downloaded data
 ```
 
 Coverage: colour deconvolution separates DAB from haematoxylin and tracks grade;
@@ -373,6 +439,13 @@ whole-tissue behaviour, and the exact box string the decoder is trained to emit.
 the decoder token-budget cost model and its box-count pairing; and the chat
 template copied into the budget tool staying identical to `gemma.py`'s.
 
+The feature cache (§7b) is covered for the parts that decide correctness:
+path-keying agreeing between relative and absolute forms, every manifest field
+detecting staleness, a differing resumed checkpoint being rejected, save/load
+round-tripping, no temporary files surviving an interrupted write, and a missing
+entry raising instead of silently recomputing. The encoder pass itself is not
+covered — it needs the real checkpoints.
+
 Two tests read `det.py` and `main.py` as source text and assert the HER2 loader
 serialises boxes **identically** to SegTHOR and MedG. If anyone edits that
 convention, the suite fails rather than silently training against a mismatched
@@ -384,15 +457,19 @@ Kept minimal so this can be submitted as a PR:
 
 | File | Change |
 |---|---|
-| `main.py` | `'her2': HER2Dataset` in `DATASET_MAP`; `--her2_dir` argument and default |
+| `main.py` | `'her2': HER2Dataset` in `DATASET_MAP`; `--her2_dir` argument and default; `--feature_cache_dir` / `--limit_samples` and the two helpers that apply them |
 | `lofi_utils/dataset/det.py` | `HER2Dataset`, mirroring `SegTHORDataset` and adding per-sample `content_type` metas |
+| `lofi_utils/dataset/base.py` | image loading factored into `_load_image`, which serves cached features when one is attached. Default path is byte-for-byte the previous behaviour |
+| `lofi_utils/model.py` | `ProjectionWrapper.forward` takes `already_pooled=False`, so cached post-pool features are not pooled twice. Default is unchanged |
+| `lofi_utils/train_eval.py` | `encode_vision(..., cached=False)` passes precomputed features through. Default is unchanged |
 | `lofi_utils/misc.py` | `import torch` moved inside `set_seed` / `seed_worker` so data preparation and the tests run without torch. Behaviour is unchanged |
 
 Everything else is additive: `her2/`, `tools/preprocess_bci.py`,
 `tools/preprocess_camelyon.py`, `tools/preprocess_her2_slide_labels.py`,
 `tools/merge_her2_manifests.py`, `tools/visualize_her2.py`,
 `tools/her2_eval_breakdown.py`, `tools/plot_her2_training.py`,
-`tools/check_her2_token_budget.py`, `tests/`.
+`tools/check_her2_token_budget.py`, `tools/precompute_features.py`,
+`tools/smoke_test_her2.py`, `lofi_utils/feature_cache.py`, `tests/`.
 
 ## 11. Future work
 

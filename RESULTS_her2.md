@@ -19,7 +19,8 @@ metadata.
 | CAMELYON polygon conversion pipeline | Complete, **not yet run against real slides** |
 | HEROHE / TCGA-BRCA slide-label export | Complete, **not yet run against real clinical files** |
 | Decoder token-budget analysis | Complete — measured against the real gemma-3-270m-it tokenizer |
-| Test suite | 53 tests passing, no torch / GPU / downloaded data required |
+| Frozen-encoder feature cache + laptop smoke test | Code complete and unit-tested, **never executed against real checkpoints** — see `README_her2.md` §7b |
+| Test suite | 74 tests passing, no torch / GPU / downloaded data required |
 | Fine-tuning run | **Not run** — see §2 |
 | Evaluation | **Not run** — see §2 |
 
@@ -71,9 +72,15 @@ Phases 3 and 4 need three things this environment does not have:
 2. **The checkpoints.** `myeongkyunkang/lofi-medg` plus
    `google/gemma-3-270m-it`, and either the base or merged SigLIP2 encoder.
 3. **A GPU.** The development machine has an Intel UHD 620 integrated adapter and
-   7.8 GB of system RAM, and no CUDA device. The run trains a ~400M-parameter
-   encoder plus a 270M decoder; in fp32 the weights and AdamW state alone exceed
-   the available RAM, so this is not a matter of patience.
+   7.8 GB of system RAM, and no CUDA device.
+
+   Note the constraint is wall-clock, not memory. With `--fix_enc` the encoder
+   carries no gradients, no optimiser state and no stored activations, so the
+   recipe fits comfortably in 16 GB; what does not fit is running a
+   400M-parameter encoder over 1024 patch tokens per image on a CPU. §7b of
+   `README_her2.md` removes ~97% of that cost by caching the frozen encoder's
+   output once instead of recomputing it for all 30 epochs, which brings the run
+   into free-Colab-T4 range. It does not make a CPU-only run practical.
 
 Note also that `google/gemma-3-270m-it` is a gated HuggingFace repository and
 needs licence acceptance before download; `myeongkyunkang/lofi-medg` (a single

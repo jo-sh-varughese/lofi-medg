@@ -21,9 +21,12 @@ class ProjectionWrapper(nn.Module):
         self.projection = nn.Sequential(nn.Linear(vision_model_config.hidden_size, emb_dim), nn.GELU(), nn.Linear(emb_dim, emb_dim))
         self.use_pool2x2 = use_pool2x2
 
-    def forward(self, last, attention_mask=None):
+    def forward(self, last, attention_mask=None, already_pooled=False):
         # (for efficiency) following the 4x4 average pooling used in Gemma 3 for 896-resolution inputs
-        if self.use_pool2x2:
+        # already_pooled: features came from the precomputed cache, which stores
+        # them post-pool (see lofi_utils/feature_cache.py); pooling twice would
+        # silently halve the spatial grid again.
+        if self.use_pool2x2 and not already_pooled:
             last = pool2x2(last)  # 1024 -> 256
 
         # attention pooling
