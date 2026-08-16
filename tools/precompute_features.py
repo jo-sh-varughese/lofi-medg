@@ -45,40 +45,9 @@ from lofi_utils.feature_cache import (
     save_feature, unique_images, write_manifest, cache_file_path,
 )
 from lofi_utils.model import (
-    apply_lora, build_model, load_checkpoint, read_checkpoint_args, pool2x2 as pool2x2_fn,
+    build_model, checkpoint_lora_scaling, load_checkpoint, load_encoder_state_dict,
+    pool2x2 as pool2x2_fn,
 )
-
-
-# The LoRA settings that decide the module topology. If these disagree with the
-# checkpoint, load_state_dict raises on unexpected/missing keys -- it does not
-# quietly produce wrong features, which is why adopting them is safe.
-LORA_CONFIG_KEYS = ('lora_r', 'lora_alpha', 'lora_target_modules', 'head_name')
-
-
-def adopt_checkpoint_lora_config(args):
-    '''
-    Take the LoRA configuration from the checkpoint rather than the CLI default.
-
-    The features cached here must come from the same module topology training
-    will build. Rather than make the caller remember to repeat
-    --lora_target_modules q_proj k_proj v_proj out_proj fc1 fc2, read what the
-    checkpoint was actually trained with.
-    '''
-    if not os.path.isfile(args.resume):
-        return
-
-    args_dict = read_checkpoint_args(args.resume)
-    if not args_dict:
-        print('Checkpoint carries no args dict; using the values passed on the command line.')
-        return
-
-    for key in LORA_CONFIG_KEYS:
-        if key not in args_dict:
-            continue
-        found, current = args_dict[key], getattr(args, key)
-        if found != current:
-            print(f'Adopting {key} from the checkpoint: {current!r} -> {found!r}')
-        setattr(args, key, found)
 
 
 def build_encoder(args):
@@ -87,24 +56,22 @@ def build_encoder(args):
     same checkpoint load. Any divergence here silently produces features that
     do not match what training would have computed.
     '''
-    adopt_checkpoint_lora_config(args)
-
     model, processor = build_model(args.model_name, args.model_dir)
 
     if processor.image_processor.size['height'] != processor.image_processor.size['width']:
         raise ValueError('Image sizes do not match:', processor.image_processor.size)
     image_size = processor.image_processor.size['height']
 
-    if args.lora_r > 0:
-        model = apply_lora(
-            model, r=args.lora_r, lora_alpha=args.lora_alpha,
-            target_modules=args.lora_target_modules, head_name=args.head_name,
-        )
-
+    # No apply_lora here, deliberately. A cache is only usable with --fix_enc
+    # (main.py enforces this), and --fix_enc zeroes lora_r so training builds a
+    # plain frozen encoder and merges the checkpoint's LoRA into its weights.
+    # Doing the same here means the cached features are what training would have
+    # computed, rather than the arithmetically equivalent but differently
+    # rounded output of a LoRA module chain.
     if os.path.isfile(args.resume):
         print(f'Loading encoder weights from {args.resume}')
         ckpt = load_checkpoint(args.resume)
-        model.load_state_dict(ckpt['state_dict'])
+        load_encoder_state_dict(model, ckpt['state_dict'], checkpoint_lora_scaling(ckpt))
         # release the checkpoint before anything else allocates; holding it
         # alongside the model is what gets this OOM-killed on a free runtime
         del ckpt

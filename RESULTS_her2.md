@@ -22,7 +22,7 @@ metadata.
 | Frozen-encoder feature cache + laptop smoke test | Code complete and unit-tested, **never executed against real checkpoints** — see `README_her2.md` §7b |
 | Shuffled-image control (`--shuffle_images`) | Implemented and unit-tested. It was prescribed in §6 below but had no implementation until now |
 | Colab notebook running the IHC track end to end | `notebooks/her2_colab_arm_a.ipynb`, **never executed** |
-| Test suite | 87 tests passing, no torch / GPU / downloaded data required |
+| Test suite | 98 tests passing; 89 need no torch / GPU / downloaded data, 9 cover LoRA merging and need torch |
 | Fine-tuning run | **Not run** — see §2 |
 | Evaluation | **Not run** — see §2 |
 

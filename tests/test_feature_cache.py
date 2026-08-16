@@ -68,6 +68,22 @@ class TestManifestValidation:
         assert len(problems) == 1
         assert field in problems[0]
 
+    def test_cache_from_an_older_encoder_build_is_rejected(self):
+        '''
+        A cache written before encoder_build existed came from the LoRA-module
+        encoder, which this version replaced with merged weights. Every other
+        field still matches, so this is the only thing standing between a stale
+        cache and a silently wrong run.
+        '''
+        stale = _manifest()
+        del stale['encoder_build']
+        problems = check_manifest(_manifest(), stale)
+        assert len(problems) == 1
+        assert 'encoder_build' in problems[0]
+
+    def test_build_manifest_stamps_the_encoder_build(self):
+        assert build_manifest('m', '', 512, True, 'float16', (256, 1152))['encoder_build']
+
     def test_different_resume_checkpoint_is_reported(self, tmp_path):
         ckpt = tmp_path / 'last.pt'
         ckpt.write_bytes(b'x' * 100)

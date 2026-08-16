@@ -69,10 +69,21 @@ def fingerprint_file(path):
     return {'path': os.path.basename(path), 'size': stat.st_size, 'mtime': int(stat.st_mtime)}
 
 
+# Identifies how the encoder producing these features was assembled. Bump this
+# whenever that changes in a way the other manifest fields cannot see, so an
+# existing cache is rejected rather than silently reused.
+#   merged-lora-v1: LoRA folded into the base weights, matching the frozen
+#       encoder --fix_enc builds. Supersedes the caches written when the encoder
+#       was assembled with live LoRA modules -- arithmetically the same, but not
+#       identical once rounded.
+ENCODER_BUILD = 'merged-lora-v1'
+
+
 def build_manifest(model_name, resume_path, image_size, pool2x2, dtype, feature_shape):
     if dtype not in SUPPORTED_DTYPES:
         raise ValueError(f'unsupported cache dtype {dtype!r}, expected one of {SUPPORTED_DTYPES}')
     return {
+        'encoder_build': ENCODER_BUILD,
         'model_name': model_name,
         'resume': fingerprint_file(resume_path),
         'image_size': int(image_size),
@@ -91,6 +102,15 @@ def check_manifest(expected, found):
     for key in ('model_name', 'image_size', 'pool2x2', 'dtype'):
         if expected.get(key) != found.get(key):
             problems.append(f'{key}: cache was built with {found.get(key)!r}, this run wants {expected.get(key)!r}')
+
+    # A missing encoder_build means a cache written before the field existed,
+    # which is exactly the build this version supersedes -- treat it as a
+    # mismatch rather than assuming it is current.
+    if expected.get('encoder_build') != found.get('encoder_build'):
+        problems.append(
+            f'encoder_build: cache was built by {found.get("encoder_build", "an earlier version")!r}, '
+            f'this run wants {expected.get("encoder_build")!r}. Delete the cache and recompute.'
+        )
 
     expected_resume, found_resume = expected.get('resume'), found.get('resume')
     if expected_resume != found_resume:

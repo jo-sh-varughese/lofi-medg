@@ -16,7 +16,10 @@ from lofi_utils.dataset.vqa import SLAKEDataset, VQARADDataset, OmniMedVQADatase
 from lofi_utils.feature_cache import build_manifest, FeatureCache, read_manifest
 from lofi_utils.gemma import Gemma3Model, GemmaTokenizer
 from lofi_utils.misc import set_seed, seed_worker
-from lofi_utils.model import apply_lora, build_model, load_checkpoint, ProjectionWrapper
+from lofi_utils.model import (
+    apply_lora, build_model, checkpoint_lora_scaling, load_checkpoint,
+    load_encoder_state_dict, ProjectionWrapper,
+)
 from lofi_utils.train_eval import train, evaluate_text_generation, save_vqa_eval, save_detection_eval
 
 DATASET_MAP = {
@@ -205,7 +208,10 @@ def main(args):
     if os.path.isfile(args.resume):
         print('Resuming from checkpoint...')
         ckpt = load_checkpoint(args.resume)
-        model.load_state_dict(ckpt['state_dict'])
+        # Scaling comes from the checkpoint, not from args: --fix_enc has already
+        # zeroed args.lora_r/lora_alpha above, so args no longer knows what the
+        # checkpoint's LoRA was scaled by.
+        load_encoder_state_dict(model, ckpt['state_dict'], checkpoint_lora_scaling(ckpt))
         projection.load_state_dict(ckpt['projection'])
         if args.finetune_decoder:
             print('Resuming decoder from checkpoint...')

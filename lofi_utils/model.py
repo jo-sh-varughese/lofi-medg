@@ -147,6 +147,81 @@ def read_checkpoint_args(ckpt_path):
     return args_dict
 
 
+def checkpoint_lora_scaling(ckpt):
+    '''
+    The LoRA scaling (alpha / r) the checkpoint's encoder was trained with.
+
+    Read from the checkpoint because callers that freeze the encoder have
+    already zeroed their own lora_r/lora_alpha and can no longer supply it.
+    '''
+    args_dict = ckpt.get('args') or {}
+    r, alpha = args_dict.get('lora_r'), args_dict.get('lora_alpha')
+    if not r:
+        raise ValueError(
+            'Checkpoint records no lora_r, so its LoRA deltas cannot be scaled correctly. '
+            'Merge them with tools/merge_lora.py first and load the merged encoder.'
+        )
+    return alpha / r
+
+
+def merge_lora_state_dict(state_dict, scaling):
+    '''
+    Fold LoRA deltas into the base weights of a state dict, in place of the
+    module surgery tools/merge_lora.py performs on a live model.
+
+    Needed because --fix_enc sets lora_r = 0 (main.py, line 460), so the encoder
+    is built with plain nn.Linear layers and has nowhere to put the checkpoint's
+    lora_a/lora_b tensors. Folding them in gives that same frozen encoder the
+    fine-tuned weights it is supposed to have, and keeps the checkpoint's
+    projection and decoder -- which merging to a new model directory would
+    discard.
+
+    Same arithmetic as merge_lora_linear: W' = W + scaling * (B @ A).
+
+    Returns (merged_state_dict, merged_count).
+    '''
+    merged = dict(state_dict)
+    count = 0
+
+    for key in [k for k in merged if k.endswith('.lora_a')]:
+        prefix = key[: -len('.lora_a')]
+        b_key, weight_key = f'{prefix}.lora_b', f'{prefix}.weight'
+        if b_key not in merged or weight_key not in merged:
+            raise KeyError(f'{prefix}: lora_a present but {b_key!r} or {weight_key!r} is missing')
+
+        lora_a, lora_b = merged[key], merged[b_key]
+        weight = merged[weight_key]
+        # .float() because the deltas may be stored in a reduced precision that
+        # would lose the update, then back to the weight's own dtype.
+        delta = scaling * (lora_b.float() @ lora_a.float())
+        merged[weight_key] = (weight.float() + delta).to(weight.dtype)
+
+        del merged[key], merged[b_key]
+        count += 1
+
+    return merged, count
+
+
+def load_encoder_state_dict(model, state_dict, scaling):
+    '''
+    Load encoder weights, folding in LoRA if the model was built without it.
+
+    A model built with apply_lora takes the checkpoint as-is; one built under
+    --fix_enc needs the deltas merged first. Deciding from the model rather than
+    from a flag keeps the two callers (main.py and tools/precompute_features.py)
+    from drifting apart.
+    '''
+    has_lora_modules = any(isinstance(m, LoRALinear) for m in model.modules())
+    checkpoint_has_lora = any(k.endswith('.lora_a') for k in state_dict)
+
+    if checkpoint_has_lora and not has_lora_modules:
+        state_dict, count = merge_lora_state_dict(state_dict, scaling)
+        print(f'Merged {count} LoRA layers into the base weights (frozen encoder, no LoRA modules).')
+
+    model.load_state_dict(state_dict)
+    return model
+
+
 def build_model(model_name, model_dir):
     ckpt_path = os.path.join(model_dir, model_name)
 

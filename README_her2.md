@@ -356,11 +356,32 @@ crash:
 - `--feature_cache_dir` without `--fix_enc` is a hard error. A training encoder
   invalidates the cache after the first optimiser step.
 - A `manifest.json` records the encoder name, resumed-checkpoint fingerprint,
-  image size, pooling and dtype. A mismatch refuses to load.
+  image size, pooling, dtype and an `encoder_build` tag. A mismatch refuses to
+  load. The tag exists because how the encoder is assembled can change without
+  any of the other fields moving, which would leave a stale cache looking valid.
 - A missing entry raises rather than falling back to running the encoder, so a
   half-built cache cannot look like it worked while costing full price.
 - The encoder is kept on CPU when the cache is in use (it never executes),
   freeing ~1.6 GB of accelerator memory.
+
+**Resuming the released checkpoint under `--fix_enc`.** These interact in a way
+upstream never had to handle, because `--fix_enc` and resuming a LoRA checkpoint
+were not combined before. `main.py:460` sets `lora_r = 0` when the encoder is
+frozen — correct, since a frozen encoder has no LoRA to train — so the encoder is
+built from plain `nn.Linear` layers. But the released checkpoint stores its
+encoder as base weights *plus* LoRA deltas on `q_proj k_proj v_proj out_proj fc1
+fc2`, and those tensors then have nowhere to go: `load_state_dict` fails with
+every LoRA key unexpected.
+
+`load_encoder_state_dict` folds them in first, using the same
+`W' = W + (α/r)·B·A` as `tools/merge_lora.py`, with α and r read from the
+checkpoint's own `args` because the CLI values have already been zeroed. The
+alternative — merging to a new model directory with `tools/merge_lora.py` — would
+discard the checkpoint's projection head and decoder, which Arm A needs.
+
+`tools/precompute_features.py` builds its encoder the same way rather than with
+live LoRA modules. The two are equal on paper but not bit-for-bit once rounded,
+and the cached features must be what training would have computed.
 
 **Why this matters for the memory budget.** With `--fix_enc` the encoder holds
 no gradients, no optimiser state and no stored activations; trainable is decoder
@@ -431,7 +452,7 @@ Three controls belong in any honest write-up:
 ## 9. Tests
 
 ```bash
-python -m pytest tests -q      # 87 tests, no torch, no GPU, no downloaded data
+python -m pytest tests -q      # 98 tests; 89 need no torch, GPU or downloaded data
 ```
 
 Coverage: colour deconvolution separates DAB from haematoxylin and tracks grade;
