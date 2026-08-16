@@ -164,6 +164,22 @@ def checkpoint_lora_scaling(ckpt):
     return alpha / r
 
 
+def lora_delta(lora_a, lora_b, scaling):
+    '''
+    scaling * (B @ A), in float32.
+
+    The float32 cast is deliberate: deltas stored in a reduced precision would
+    otherwise lose most of the update. Shared by both merge paths so the
+    arithmetic cannot drift between them.
+    '''
+    return scaling * (lora_b.float() @ lora_a.float())
+
+
+def lora_prefixes(state_dict):
+    '''The module prefixes in a state dict that carry LoRA tensors.'''
+    return [k[: -len('.lora_a')] for k in state_dict if k.endswith('.lora_a')]
+
+
 def merge_lora_state_dict(state_dict, scaling):
     '''
     Fold LoRA deltas into the base weights of a state dict, in place of the
@@ -178,6 +194,11 @@ def merge_lora_state_dict(state_dict, scaling):
 
     Same arithmetic as merge_lora_linear: W' = W + scaling * (B @ A).
 
+    This is the reference form, and what the tests pin. load_encoder_state_dict
+    does not call it: on a memory-constrained runtime the merged copy it returns
+    is itself the problem, so that path merges into the model's parameters
+    instead. Use this one where a plain merged state dict is what is wanted.
+
     Returns (merged_state_dict, merged_count).
     '''
     merged = dict(state_dict)
@@ -189,11 +210,8 @@ def merge_lora_state_dict(state_dict, scaling):
         if b_key not in merged or weight_key not in merged:
             raise KeyError(f'{prefix}: lora_a present but {b_key!r} or {weight_key!r} is missing')
 
-        lora_a, lora_b = merged[key], merged[b_key]
         weight = merged[weight_key]
-        # .float() because the deltas may be stored in a reduced precision that
-        # would lose the update, then back to the weight's own dtype.
-        delta = scaling * (lora_b.float() @ lora_a.float())
+        delta = lora_delta(merged[key], merged[b_key], scaling)
         merged[weight_key] = (weight.float() + delta).to(weight.dtype)
 
         del merged[key], merged[b_key]
@@ -210,15 +228,43 @@ def load_encoder_state_dict(model, state_dict, scaling):
     --fix_enc needs the deltas merged first. Deciding from the model rather than
     from a flag keeps the two callers (main.py and tools/precompute_features.py)
     from drifting apart.
+
+    Merges into the model's own parameters rather than into a copy of the state
+    dict. Building a merged dict means ~2 GB of extra float32 weights alive
+    beside the 4.4 GB model, which is enough to get the training run OOM-killed
+    on a 12.7 GB runtime.
     '''
     has_lora_modules = any(isinstance(m, LoRALinear) for m in model.modules())
-    checkpoint_has_lora = any(k.endswith('.lora_a') for k in state_dict)
+    prefixes = lora_prefixes(state_dict)
 
-    if checkpoint_has_lora and not has_lora_modules:
-        state_dict, count = merge_lora_state_dict(state_dict, scaling)
-        print(f'Merged {count} LoRA layers into the base weights (frozen encoder, no LoRA modules).')
+    if not prefixes or has_lora_modules:
+        model.load_state_dict(state_dict)
+        return model
 
-    model.load_state_dict(state_dict)
+    # Load the base weights first, holding back the LoRA tensors the plain
+    # nn.Linear layers have no home for. strict=False would also hide a genuinely
+    # missing weight, so the result is checked rather than trusted.
+    lora_keys = {f'{p}.{suffix}' for p in prefixes for suffix in ('lora_a', 'lora_b')}
+    base = {k: v for k, v in state_dict.items() if k not in lora_keys}
+    missing, unexpected = model.load_state_dict(base, strict=False)
+    if missing or unexpected:
+        raise RuntimeError(
+            f'Encoder weights do not match the model after setting LoRA aside. '
+            f'Missing: {list(missing)[:5]}. Unexpected: {list(unexpected)[:5]}.'
+        )
+
+    params = dict(model.named_parameters())
+    with torch.no_grad():
+        for prefix in prefixes:
+            weight_key = f'{prefix}.weight'
+            if weight_key not in params:
+                raise KeyError(f'{prefix}: checkpoint has LoRA for a weight the model does not have')
+            weight = params[weight_key]
+            delta = lora_delta(state_dict[f'{prefix}.lora_a'], state_dict[f'{prefix}.lora_b'], scaling)
+            weight.add_(delta.to(weight.dtype))
+            del delta
+
+    print(f'Merged {len(prefixes)} LoRA layers into the base weights (frozen encoder, no LoRA modules).')
     return model
 
 
