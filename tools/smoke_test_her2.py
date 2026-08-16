@@ -42,6 +42,37 @@ def run_step(name, command):
     return True
 
 
+def checkpoint_lora_flags(resume):
+    '''
+    Build the --lora_* flags that match the checkpoint.
+
+    main.py applies LoRA from its CLI args *before* it resumes, so a mismatch
+    with the checkpoint fails at load_state_dict. The released LoFi-MedG
+    checkpoint targets q_proj k_proj v_proj out_proj fc1 fc2; the CLI default is
+    only the first four. Reading the checkpoint keeps the two in step without
+    anyone having to remember the longer list.
+    '''
+    if not os.path.isfile(resume):
+        return []
+
+    sys.path.append(REPO_ROOT)
+    from lofi_utils.model import read_checkpoint_args
+
+    args_dict = read_checkpoint_args(resume)
+    if not args_dict:
+        print('Checkpoint carries no args dict; leaving the LoRA flags at their defaults.')
+        return []
+
+    flags = []
+    if 'lora_target_modules' in args_dict:
+        flags += ['--lora_target_modules'] + list(args_dict['lora_target_modules'])
+    for key in ('lora_r', 'lora_alpha', 'head_name'):
+        if key in args_dict:
+            flags += [f'--{key}', str(args_dict[key])]
+    print(f'LoRA flags taken from the checkpoint: {" ".join(flags)}')
+    return flags
+
+
 def main(args):
     python = sys.executable
     result_dir = os.path.join(args.result_dir, 'smoke')
@@ -58,6 +89,7 @@ def main(args):
     ]
     if args.resume:
         common += ['--resume', args.resume]
+        common += checkpoint_lora_flags(args.resume)
 
     steps = []
 

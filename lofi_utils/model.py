@@ -130,6 +130,23 @@ def load_checkpoint(ckpt_path):
         return torch.load(ckpt_path, map_location='cpu', weights_only=False)
 
 
+def read_checkpoint_args(ckpt_path):
+    '''
+    Return the args dict a checkpoint was trained with, or None if absent.
+
+    The LoRA topology must match the checkpoint exactly or load_state_dict
+    raises: the released LoFi-MedG checkpoint targets q_proj k_proj v_proj
+    out_proj fc1 fc2, while main.py's --lora_target_modules default is only the
+    first four. Trusting the checkpoint over the CLI default is what
+    tools/merge_lora.py and main.py's evaluation path already do.
+    '''
+    ckpt = load_checkpoint(ckpt_path)
+    args_dict = ckpt.get('args')
+    del ckpt
+    gc.collect()
+    return args_dict
+
+
 def build_model(model_name, model_dir):
     ckpt_path = os.path.join(model_dir, model_name)
 
